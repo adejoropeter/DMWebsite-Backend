@@ -96,12 +96,14 @@ async function launchBrowser() {
       "--window-size=1200,900",
     ],
     timeout: LAUNCH_TIMEOUT,
+    executablePath: process.env.CHROME_PATH || undefined // <-- Add this
   };
 
   if (PROXY) launchOptions.args.push(`--proxy-server=${PROXY}`);
 
   return await puppeteer.launch(launchOptions);
 }
+
 
 async function fetchHtmlWithPuppeteer(url) {
   let browser;
