@@ -9,11 +9,11 @@ import pkg from "pg";
 import process from "process";
 import dotenv from "dotenv";
 
-
 dotenv.config();
 
 const { Pool } = pkg;
 
+// Enable stealth plugin
 puppeteer.use(StealthPlugin());
 
 const app = express();
@@ -28,8 +28,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
-app.options("*", cors()); 
-
+app.options("*", cors());
 
 const PORT = process.env.PORT || 4000;
 const LAUNCH_TIMEOUT = 30000;
@@ -111,7 +110,10 @@ async function fetchHtmlWithPuppeteer(url) {
     const page = await browser.newPage();
 
     if (PROXY && PROXY_USERNAME && PROXY_PASSWORD) {
-      await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
+      await page.authenticate({
+        username: PROXY_USERNAME,
+        password: PROXY_PASSWORD,
+      });
     }
 
     await page.setViewport({ width: 1200, height: 900 });
