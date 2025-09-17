@@ -17,11 +17,16 @@ const { Pool } = pkg;
 puppeteerExtra.use(StealthPlugin());
 
 const app = express();
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*"); // allow all origins
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json());
 app.options("*", cors()); 
 
