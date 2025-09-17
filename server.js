@@ -31,6 +31,8 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+
+
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fixtures (
@@ -72,20 +74,18 @@ function randomUserAgent() {
 
 async function launchBrowser() {
   const launchOptions = {
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-features=IsolateOrigins,site-per-process",
-      "--disable-extensions",
-      "--single-process",
-      "--ignore-certificate-errors",
-      "--window-size=1200,900",
-    ],
-    timeout: LAUNCH_TIMEOUT,
-    executablePath: process.env.CHROME_PATH || undefined, // optional custom Chrome
-  };
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--ignore-certificate-errors",
+    "--window-size=1200,900",
+  ],
+  timeout: LAUNCH_TIMEOUT,
+};
+
 
   if (PROXY) launchOptions.args.push(`--proxy-server=${PROXY}`);
 
