@@ -10,33 +10,25 @@ import process from "process";
 import dotenv from "dotenv";
 
 dotenv.config();
-
 const { Pool } = pkg;
 
 // Enable stealth plugin
 puppeteer.use(StealthPlugin());
 
 const app = express();
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*"); // allow all origins
-  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
 
+// ===== CORS SETUP =====
+app.use(cors({ origin: "*" })); // allow all origins
 app.use(express.json());
-app.options("*", cors());
 
+// ===== CONFIG =====
 const PORT = process.env.PORT || 4000;
 const LAUNCH_TIMEOUT = 30000;
 
-// ================== POSTGRES DB SETUP ==================
+// ===== POSTGRES DB SETUP =====
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // Render/Heroku usually provides DATABASE_URL
-  ssl: { rejectUnauthorized: false }, // important for Render/Heroku
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
 
 async function initDB() {
@@ -50,7 +42,6 @@ async function initDB() {
 }
 await initDB();
 
-// Save fixtures into DB
 async function saveFixturesToCache(week, fixtures) {
   await pool.query(
     `INSERT INTO fixtures (week, data, updated_at)
@@ -60,15 +51,12 @@ async function saveFixturesToCache(week, fixtures) {
   );
 }
 
-// Load fixtures from DB
 async function loadFixturesFromCache(week) {
-  const result = await pool.query(`SELECT data FROM fixtures WHERE week = $1`, [
-    week,
-  ]);
+  const result = await pool.query(`SELECT data FROM fixtures WHERE week = $1`, [week]);
   return result.rows.length ? result.rows[0].data : null;
 }
 
-// ================== SCRAPER HELPERS ==================
+// ===== SCRAPER HELPERS =====
 const PROXY = process.env.PROXY || null;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || null;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || null;
@@ -96,14 +84,13 @@ async function launchBrowser() {
       "--window-size=1200,900",
     ],
     timeout: LAUNCH_TIMEOUT,
-    executablePath: process.env.CHROME_PATH || undefined // <-- Add this
+    executablePath: process.env.CHROME_PATH || undefined, // optional custom Chrome
   };
 
   if (PROXY) launchOptions.args.push(`--proxy-server=${PROXY}`);
 
   return await puppeteer.launch(launchOptions);
 }
-
 
 async function fetchHtmlWithPuppeteer(url) {
   let browser;
@@ -112,10 +99,7 @@ async function fetchHtmlWithPuppeteer(url) {
     const page = await browser.newPage();
 
     if (PROXY && PROXY_USERNAME && PROXY_PASSWORD) {
-      await page.authenticate({
-        username: PROXY_USERNAME,
-        password: PROXY_PASSWORD,
-      });
+      await page.authenticate({ username: PROXY_USERNAME, password: PROXY_PASSWORD });
     }
 
     await page.setViewport({ width: 1200, height: 900 });
@@ -131,7 +115,6 @@ async function fetchHtmlWithPuppeteer(url) {
     });
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
-
     try {
       await page.waitForSelector("#table", { timeout: 5000 });
     } catch {}
@@ -146,7 +129,7 @@ async function fetchHtmlWithPuppeteer(url) {
   }
 }
 
-// ================== PARSERS ==================
+// ===== PARSERS =====
 async function parseFixtures(html) {
   const $ = cheerio.load(html);
   const fixtures = [];
@@ -170,52 +153,39 @@ async function parseFixtures(html) {
 async function fetchLatestFixtures() {
   const week = "latest";
   const cached = await loadFixturesFromCache(week);
-  if (cached) {
-    console.log("Serving fixtures from cache:", week);
-    return { week, fixtures: cached, cached: true };
-  }
+  if (cached) return { week, fixtures: cached, cached: true };
 
-  const url = "https://ablefast.com/";
-  const html = await fetchHtmlWithPuppeteer(url);
+  const html = await fetchHtmlWithPuppeteer("https://ablefast.com/");
   const fixtures = await parseFixtures(html);
-
   await saveFixturesToCache(week, fixtures);
   return { week, fixtures, cached: false };
 }
 
 async function fetchFixturesByDate(date) {
   const cached = await loadFixturesFromCache(date);
-  if (cached) {
-    console.log("Serving fixtures from cache:", date);
-    return { week: date, fixtures: cached, cached: true };
-  }
+  if (cached) return { week: date, fixtures: cached, cached: true };
 
-  const url = `https://ablefast.com/results/${date}`;
-  const html = await fetchHtmlWithPuppeteer(url);
+  const html = await fetchHtmlWithPuppeteer(`https://ablefast.com/results/${date}`);
   const fixtures = await parseFixtures(html);
-
   await saveFixturesToCache(date, fixtures);
   return { week: date, fixtures, cached: false };
 }
 
 async function fetchAvailableWeeks() {
-  const url = "https://ablefast.com/";
-  const html = await fetchHtmlWithPuppeteer(url);
+  const html = await fetchHtmlWithPuppeteer("https://ablefast.com/");
   const $ = cheerio.load(html);
   const weeks = [];
 
   $("select option").each((i, el) => {
     const value = $(el).attr("value");
     const label = $(el).text().trim();
-    if (value && value.includes("-")) {
-      weeks.push({ date: value, label });
-    }
+    if (value && value.includes("-")) weeks.push({ date: value, label });
   });
 
   return weeks;
 }
 
-// ================== API ROUTES ==================
+// ===== API ROUTES =====
 app.get("/api/fixtures", async (req, res) => {
   const result = await fetchLatestFixtures();
   res.json(result);
@@ -232,7 +202,7 @@ app.get("/api/fixtures/:date", async (req, res) => {
   res.json(result);
 });
 
-// ================== START SERVER ==================
+// ===== START SERVER =====
 app.listen(PORT, () => {
   console.log(`Pool Fixtures API running on port ${PORT}`);
 });
