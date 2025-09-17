@@ -2,7 +2,7 @@
 // Run with Node 18+ and "type": "module" in package.json
 import express from "express";
 import cors from "cors";
-import puppeteerExtra from "puppeteer-extra";
+import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import * as cheerio from "cheerio";
 import pkg from "pg";
@@ -14,7 +14,7 @@ dotenv.config();
 
 const { Pool } = pkg;
 
-puppeteerExtra.use(StealthPlugin());
+puppeteer.use(StealthPlugin());
 
 const app = express();
 app.use((req, res, next) => {
@@ -101,7 +101,7 @@ async function launchBrowser() {
 
   if (PROXY) launchOptions.args.push(`--proxy-server=${PROXY}`);
 
-  return await puppeteerExtra.launch(launchOptions);
+  return await puppeteer.launch(launchOptions);
 }
 
 async function fetchHtmlWithPuppeteer(url) {

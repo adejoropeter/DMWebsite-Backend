@@ -5,7 +5,8 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "puppeteer browsers install chrome"
   },
   "dependencies": {
     "axios": "^1.6.7",
@@ -14,7 +15,7 @@
     "dotenv": "^17.2.2",
     "express": "^4.21.2",
     "pg": "^8.16.3",
-    "puppeteer": "^24.21.0",
+    "puppeteer": "^24.22.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
