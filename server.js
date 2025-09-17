@@ -6,19 +6,18 @@ import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import * as cheerio from "cheerio";
 import pkg from "pg";
-import process from "process";
 import dotenv from "dotenv";
 
 dotenv.config();
 const { Pool } = pkg;
 
-// Enable stealth plugin
+// ===== Enable stealth plugin =====
 puppeteer.use(StealthPlugin());
 
 const app = express();
 
 // ===== CORS SETUP =====
-app.use(cors({ origin: "*" })); // allow all origins
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 // ===== CONFIG =====
@@ -27,35 +26,49 @@ const LAUNCH_TIMEOUT = 30000;
 
 // ===== POSTGRES DB SETUP =====
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  connectionString: process.env.DATABASE_URL, // Use Render External DB URL
+  ssl: { rejectUnauthorized: false },         // Required for Render Postgres
 });
 
-
-
+// Initialize DB table
 async function initDB() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS fixtures (
-      week TEXT PRIMARY KEY,
-      data JSONB NOT NULL,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fixtures (
+        week TEXT PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log("DB initialized ✅");
+  } catch (err) {
+    console.error("DB init error:", err);
+  }
 }
 await initDB();
 
+// ===== DB HELPER FUNCTIONS =====
 async function saveFixturesToCache(week, fixtures) {
-  await pool.query(
-    `INSERT INTO fixtures (week, data, updated_at)
-     VALUES ($1, $2, NOW())
-     ON CONFLICT (week) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-    [week, JSON.stringify(fixtures)]
-  );
+  try {
+    await pool.query(
+      `INSERT INTO fixtures (week, data, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (week) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      [week, JSON.stringify(fixtures)]
+    );
+  } catch (err) {
+    console.error("Error saving fixtures:", err);
+  }
 }
 
 async function loadFixturesFromCache(week) {
-  const result = await pool.query(`SELECT data FROM fixtures WHERE week = $1`, [week]);
-  return result.rows.length ? result.rows[0].data : null;
+  try {
+    const result = await pool.query(`SELECT data FROM fixtures WHERE week = $1`, [week]);
+    return result.rows.length ? result.rows[0].data : null;
+  } catch (err) {
+    console.error("Error loading fixtures:", err);
+    return null;
+  }
 }
 
 // ===== SCRAPER HELPERS =====
@@ -68,30 +81,31 @@ const USER_AGENTS = [
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
   "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/120.0",
 ];
+
 function randomUserAgent() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
+// Launch Puppeteer
 async function launchBrowser() {
   const launchOptions = {
-  headless: true,
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-extensions",
-    "--ignore-certificate-errors",
-    "--window-size=1200,900",
-  ],
-  timeout: LAUNCH_TIMEOUT,
-};
-
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-extensions",
+      "--ignore-certificate-errors",
+      "--window-size=1200,900",
+    ],
+    timeout: LAUNCH_TIMEOUT,
+  };
 
   if (PROXY) launchOptions.args.push(`--proxy-server=${PROXY}`);
-
   return await puppeteer.launch(launchOptions);
 }
 
+// Fetch HTML
 async function fetchHtmlWithPuppeteer(url) {
   let browser;
   try {
@@ -108,16 +122,12 @@ async function fetchHtmlWithPuppeteer(url) {
 
     await page.setRequestInterception(true);
     page.on("request", (req) => {
-      if (["image", "stylesheet", "font", "media"].includes(req.resourceType())) {
-        return req.abort();
-      }
-      req.continue();
+      if (["image", "stylesheet", "font", "media"].includes(req.resourceType())) req.abort();
+      else req.continue();
     });
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
-    try {
-      await page.waitForSelector("#table", { timeout: 5000 });
-    } catch {}
+    try { await page.waitForSelector("#table", { timeout: 5000 }); } catch {}
 
     const content = await page.content();
     await page.close();
@@ -125,6 +135,7 @@ async function fetchHtmlWithPuppeteer(url) {
     return content;
   } catch (err) {
     if (browser) await browser.close().catch(() => {});
+    console.error("Puppeteer fetch error:", err);
     throw err;
   }
 }
@@ -142,14 +153,13 @@ async function parseFixtures(html) {
     const result = $(cols[4]).text().trim();
     const status = $(cols[5]).text().trim();
 
-    if (number && home && away) {
-      fixtures.push({ number, home, away, result, status });
-    }
+    if (number && home && away) fixtures.push({ number, home, away, result, status });
   });
 
   return fixtures;
 }
 
+// ===== FETCH FUNCTIONS =====
 async function fetchLatestFixtures() {
   const week = "latest";
   const cached = await loadFixturesFromCache(week);
@@ -187,19 +197,30 @@ async function fetchAvailableWeeks() {
 
 // ===== API ROUTES =====
 app.get("/api/fixtures", async (req, res) => {
-  const result = await fetchLatestFixtures();
-  res.json(result);
-});
-
-app.get("/api/weeks", async (req, res) => {
-  const weeks = await fetchAvailableWeeks();
-  res.json(weeks);
+  try {
+    const result = await fetchLatestFixtures();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch latest fixtures" });
+  }
 });
 
 app.get("/api/fixtures/:date", async (req, res) => {
-  const { date } = req.params;
-  const result = await fetchFixturesByDate(date);
-  res.json(result);
+  try {
+    const result = await fetchFixturesByDate(req.params.date);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch fixtures by date" });
+  }
+});
+
+app.get("/api/weeks", async (req, res) => {
+  try {
+    const weeks = await fetchAvailableWeeks();
+    res.json(weeks);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch available weeks" });
+  }
 });
 
 // ===== START SERVER =====
