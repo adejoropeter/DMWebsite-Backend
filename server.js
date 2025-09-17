@@ -23,6 +23,8 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json());
+app.options("*", cors()); 
+
 
 const PORT = process.env.PORT || 4000;
 const LAUNCH_TIMEOUT = 30000;
