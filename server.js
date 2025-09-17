@@ -18,9 +18,9 @@ puppeteerExtra.use(StealthPlugin());
 
 const app = express();
 app.use(cors({
-  origin: ["http://127.0.0.1:5500"],           // allow all origins
+  origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
 app.use(express.json());
 app.options("*", cors()); 
