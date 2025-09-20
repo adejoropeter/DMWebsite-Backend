@@ -197,8 +197,6 @@ async function fetchFixturesByDate(date) {
 
 async function fetchAvailableWeeks() {
   const html = await fetchHtmlWithPuppeteer("https://ablefast.com/");
-
-  // ✅ Make sure the HTML really has the <select> dropdown
   const $ = cheerio.load(html);
   const weeks = [];
 
@@ -211,11 +209,14 @@ async function fetchAvailableWeeks() {
   });
 
   if (weeks.length === 0) {
-    console.warn("⚠️ No weeks found in the dropdown — maybe rendered dynamically.");
+    console.warn("⚠️ No weeks found in dropdown");
+    // return empty array instead of crashing
+    return [];
   }
 
   return weeks;
 }
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
