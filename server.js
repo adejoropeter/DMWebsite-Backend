@@ -32,7 +32,7 @@ const pool = new Pool({
 // ----------------- DB initialization -----------------
 async function initDB() {
   try {
-    // fixtures table (existing)
+    // fixtures table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS fixtures (
         week TEXT PRIMARY KEY,
@@ -62,19 +62,19 @@ async function initDB() {
 await initDB();
 
 // ----------------- Utility: admin auth middleware -----------------
-const ADMIN_KEY = process.env.ADMIN_KEY || ""; // set this in Render environment
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
 
 function requireAdmin(req, res, next) {
   const key = req.headers["x-admin-key"] || "";
   if (!ADMIN_KEY || key !== ADMIN_KEY) {
-    return res.status(401).json({ error: "Unauthorized. Provide valid x-admin-key header." });
+    return res
+      .status(401)
+      .json({ error: "Unauthorized. Provide valid x-admin-key header." });
   }
   next();
 }
 
-// ----------------- Existing Puppeteer + fixtures code (unchanged logic) -----------------
-// You can keep your existing Puppeteer/fixtures implementation here.
-// For brevity I'm including the same code you had previously for scraping fixtures:
+// ----------------- Puppeteer utilities -----------------
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
@@ -97,6 +97,7 @@ async function launchBrowser() {
       "--ignore-certificate-errors",
       "--window-size=1200,900",
     ],
+    executablePath: puppeteer.executablePath(), // ✅ use Puppeteer's installed Chrome
     timeout: LAUNCH_TIMEOUT,
   };
 
@@ -108,7 +109,6 @@ async function launchBrowser() {
   }
 }
 
-
 async function fetchHtmlWithPuppeteer(url) {
   let browser;
   try {
@@ -119,7 +119,8 @@ async function fetchHtmlWithPuppeteer(url) {
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
     await page.setRequestInterception(true);
     page.on("request", (req) => {
-      if (["image", "stylesheet", "font", "media"].includes(req.resourceType())) req.abort();
+      if (["image", "stylesheet", "font", "media"].includes(req.resourceType()))
+        req.abort();
       else req.continue();
     });
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
@@ -133,12 +134,13 @@ async function fetchHtmlWithPuppeteer(url) {
     await browser.close();
     return content;
   } catch (err) {
-    if (browser) await browser.close().catch(() => { });
+    if (browser) await browser.close().catch(() => {});
     console.error("Puppeteer fetch error:", err);
     throw err;
   }
 }
 
+// ----------------- Fixtures scraping -----------------
 async function parseFixtures(html) {
   const $ = cheerio.load(html);
   const fixtures = [];
@@ -149,7 +151,8 @@ async function parseFixtures(html) {
     const away = $(cols[3]).text().trim();
     const result = $(cols[4]).text().trim();
     const status = $(cols[5]).text().trim();
-    if (number && home && away) fixtures.push({ number, home, away, result, status });
+    if (number && home && away)
+      fixtures.push({ number, home, away, result, status });
   });
   return fixtures;
 }
@@ -168,7 +171,9 @@ async function saveFixturesToCache(week, fixtures) {
 
 async function loadFixturesFromCache(week) {
   try {
-    const r = await pool.query(`SELECT data FROM fixtures WHERE week = $1`, [week]);
+    const r = await pool.query(`SELECT data FROM fixtures WHERE week = $1`, [
+      week,
+    ]);
     return r.rows.length ? r.rows[0].data : null;
   } catch (err) {
     console.error("Error loading fixtures from cache:", err);
@@ -189,7 +194,9 @@ async function fetchLatestFixtures() {
 async function fetchFixturesByDate(date) {
   const cached = await loadFixturesFromCache(date);
   if (cached) return { week: date, fixtures: cached, cached: true };
-  const html = await fetchHtmlWithPuppeteer(`https://ablefast.com/results/${date}`);
+  const html = await fetchHtmlWithPuppeteer(
+    `https://ablefast.com/results/${date}`
+  );
   const fixtures = await parseFixtures(html);
   await saveFixturesToCache(date, fixtures);
   return { week: date, fixtures, cached: false };
@@ -210,19 +217,17 @@ async function fetchAvailableWeeks() {
 
   if (weeks.length === 0) {
     console.warn("⚠️ No weeks found in dropdown");
-    // return empty array instead of crashing
     return [];
   }
 
   return weeks;
 }
 
+// ----------------- Routes -----------------
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-
-// ---------- Fixtures routes (existing) ----------
 app.get("/api/fixtures", async (req, res) => {
   try {
     const result = await fetchLatestFixtures();
@@ -253,12 +258,13 @@ app.get("/api/weeks", async (req, res) => {
   }
 });
 
-// ----------------- Adverts API -----------------
-
-// GET /api/adverts - list all adverts (newest first)
+// ----------------- Adverts -----------------
 app.get("/api/adverts", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT id, title, excerpt, content, created_at, updated_at FROM adverts ORDER BY created_at DESC`);
+    const result = await pool.query(
+      `SELECT id, title, excerpt, content, created_at, updated_at 
+       FROM adverts ORDER BY created_at DESC`
+    );
     res.json(result.rows);
   } catch (err) {
     console.error("Error fetching adverts:", err);
@@ -266,12 +272,16 @@ app.get("/api/adverts", async (req, res) => {
   }
 });
 
-// GET /api/adverts/:id - get single advert
 app.get("/api/adverts/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(`SELECT id, title, excerpt, content, created_at, updated_at FROM adverts WHERE id = $1`, [id]);
-    if (!result.rows.length) return res.status(404).json({ error: "Advert not found" });
+    const result = await pool.query(
+      `SELECT id, title, excerpt, content, created_at, updated_at 
+       FROM adverts WHERE id = $1`,
+      [id]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ error: "Advert not found" });
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Error fetching advert:", err);
@@ -279,20 +289,29 @@ app.get("/api/adverts/:id", async (req, res) => {
   }
 });
 
-// POST /api/adverts - create advert (admin)
 app.post("/api/adverts", requireAdmin, async (req, res) => {
   try {
     const { title, excerpt, content } = req.body;
-    if (!title || !excerpt || !content) return res.status(400).json({ error: "title, excerpt and content are required" });
+    if (!title || !excerpt || !content)
+      return res
+        .status(400)
+        .json({ error: "title, excerpt and content are required" });
 
     const id = randomUUID();
     const now = new Date();
     await pool.query(
-      `INSERT INTO adverts (id, title, excerpt, content, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$5)`,
+      `INSERT INTO adverts (id, title, excerpt, content, created_at, updated_at) 
+       VALUES ($1,$2,$3,$4,$5,$5)`,
       [id, title, excerpt, content, now]
     );
 
-    const created = (await pool.query(`SELECT id, title, excerpt, content, created_at, updated_at FROM adverts WHERE id = $1`, [id])).rows[0];
+    const created = (
+      await pool.query(
+        `SELECT id, title, excerpt, content, created_at, updated_at 
+         FROM adverts WHERE id = $1`,
+        [id]
+      )
+    ).rows[0];
     res.status(201).json(created);
   } catch (err) {
     console.error("Error creating advert:", err);
@@ -300,15 +319,23 @@ app.post("/api/adverts", requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/adverts/:id - update advert (admin)
 app.put("/api/adverts/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, excerpt, content } = req.body;
-    if (!title || !excerpt || !content) return res.status(400).json({ error: "title, excerpt and content are required" });
+    if (!title || !excerpt || !content)
+      return res
+        .status(400)
+        .json({ error: "title, excerpt and content are required" });
 
-    const result = await pool.query(`UPDATE adverts SET title=$1, excerpt=$2, content=$3, updated_at=NOW() WHERE id=$4 RETURNING id, title, excerpt, content, created_at, updated_at`, [title, excerpt, content, id]);
-    if (!result.rows.length) return res.status(404).json({ error: "Advert not found" });
+    const result = await pool.query(
+      `UPDATE adverts SET title=$1, excerpt=$2, content=$3, updated_at=NOW() 
+       WHERE id=$4 
+       RETURNING id, title, excerpt, content, created_at, updated_at`,
+      [title, excerpt, content, id]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ error: "Advert not found" });
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Error updating advert:", err);
@@ -316,12 +343,15 @@ app.put("/api/adverts/:id", requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/adverts/:id - delete advert (admin)
 app.delete("/api/adverts/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(`DELETE FROM adverts WHERE id=$1 RETURNING id`, [id]);
-    if (!result.rows.length) return res.status(404).json({ error: "Advert not found" });
+    const result = await pool.query(
+      `DELETE FROM adverts WHERE id=$1 RETURNING id`,
+      [id]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ error: "Advert not found" });
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting advert:", err);
@@ -329,13 +359,7 @@ app.delete("/api/adverts/:id", requireAdmin, async (req, res) => {
   }
 });
 
-// fallback error handler
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ error: "Internal Server Error" });
-});
-
-// Start server
+// ----------------- Start -----------------
 app.listen(PORT, () => {
   console.log(`Pool Fixtures & Adverts API running on port ${PORT}`);
 });

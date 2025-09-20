@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "postinstall": "node -e \"require('puppeteer')\""
+    "postinstall": "npx puppeteer browsers install chrome"
+
   },
   "dependencies": {
     "axios": "^1.6.7",
