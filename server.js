@@ -114,13 +114,17 @@ async function fetchHtmlWithPuppeteer(url) {
       else req.continue();
     });
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
-    try { await page.waitForSelector("#table", { timeout: 5000 }); } catch {}
+    try {
+      await page.waitForSelector("select option", { timeout: 5000 });
+    } catch {
+      console.warn("⚠️ No <select> options found before timeout");
+    }
     const content = await page.content();
     await page.close();
     await browser.close();
     return content;
   } catch (err) {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) await browser.close().catch(() => { });
     console.error("Puppeteer fetch error:", err);
     throw err;
   }
@@ -184,15 +188,26 @@ async function fetchFixturesByDate(date) {
 
 async function fetchAvailableWeeks() {
   const html = await fetchHtmlWithPuppeteer("https://ablefast.com/");
+
+  // ✅ Make sure the HTML really has the <select> dropdown
   const $ = cheerio.load(html);
   const weeks = [];
+
   $("select option").each((i, el) => {
     const value = $(el).attr("value");
     const label = $(el).text().trim();
-    if (value && value.includes("-")) weeks.push({ date: value, label });
+    if (value && value.includes("-")) {
+      weeks.push({ date: value, label });
+    }
   });
+
+  if (weeks.length === 0) {
+    console.warn("⚠️ No weeks found in the dropdown — maybe rendered dynamically.");
+  }
+
   return weeks;
 }
+
 
 // ---------- Fixtures routes (existing) ----------
 app.get("/api/fixtures", async (req, res) => {
