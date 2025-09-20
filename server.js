@@ -92,13 +92,22 @@ async function launchBrowser() {
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-extensions",
+      "--disable-gpu",
+      "--single-process",
       "--ignore-certificate-errors",
       "--window-size=1200,900",
     ],
     timeout: LAUNCH_TIMEOUT,
   };
-  return await puppeteer.launch(launchOptions);
+
+  try {
+    return await puppeteer.launch(launchOptions);
+  } catch (err) {
+    console.error("❌ Puppeteer launch failed:", err.message);
+    throw new Error("Browser launch failed on Render");
+  }
 }
+
 
 async function fetchHtmlWithPuppeteer(url) {
   let browser;
@@ -207,6 +216,9 @@ async function fetchAvailableWeeks() {
 
   return weeks;
 }
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString() });
+});
 
 
 // ---------- Fixtures routes (existing) ----------
